@@ -1,0 +1,69 @@
+#include "stm32f4xx_hal.h"
+#include "sbc.h" // Include libSBC header
+
+I2S_HandleTypeDef hi2s;
+UART_HandleTypeDef huart;
+struct sbc sbc_encoder;
+
+#define AUDIO_BUFFER_SIZE 512
+uint8_t raw_audio_buffer[AUDIO_BUFFER_SIZE];  // PCM input data
+uint8_t sbc_audio_buffer[AUDIO_BUFFER_SIZE]; // SBC encoded output
+
+void SystemClock_Config(void);
+void MX_GPIO_Init(void);
+void MX_USART2_UART_Init(void);
+void MX_I2S3_Init(void);
+void Encode_To_SBC(uint8_t* input, uint8_t* output, uint16_t size);
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART2_UART_Init();
+    MX_I2S3_Init();
+    
+    // Initialize SBC encoder
+    sbc_init(&sbc_encoder, 0);
+
+    while (1) {
+        // Receive PCM audio data from UART
+        HAL_UART_Receive(&huart, raw_audio_buffer, AUDIO_BUFFER_SIZE, HAL_MAX_DELAY);
+        
+        // Encode raw PCM to SBC format
+        Encode_To_SBC(raw_audio_buffer, sbc_audio_buffer, AUDIO_BUFFER_SIZE);
+        
+        // Transmit SBC-encoded data over I2S to ESP32
+        HAL_I2S_Transmit(&hi2s, (uint16_t*)sbc_audio_buffer, AUDIO_BUFFER_SIZE / 2, HAL_MAX_DELAY);
+    }
+}
+
+// SBC Encoding Function
+void Encode_To_SBC(uint8_t* input, uint8_t* output, uint16_t size) {
+    int encoded_bytes = sbc_encode(&sbc_encoder, input, size, output, AUDIO_BUFFER_SIZE, NULL);
+    if (encoded_bytes < 0) {
+        // Encoding error handling
+    }
+}
+
+void MX_I2S3_Init(void) {
+    hi2s.Instance = SPI3;  
+    hi2s.Init.Mode = I2S_MODE_MASTER_TX;
+    hi2s.Init.Standard = I2S_STANDARD_PHILIPS;
+    hi2s.Init.DataFormat = I2S_DATAFORMAT_16B;
+    hi2s.Init.MCLKOutput = I2S_MCLKOUTPUT_ENABLE;
+    hi2s.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+    hi2s.Init.CPOL = I2S_CPOL_LOW;
+    hi2s.Init.ClockSource = I2S_CLOCK_PLL;
+    HAL_I2S_Init(&hi2s);
+}
+
+void MX_USART2_UART_Init(void) {
+    huart.Instance = USART2;
+    huart.Init.BaudRate = 115200;
+    huart.Init.WordLength = UART_WORDLENGTH_8B;
+    huart.Init.StopBits = UART_STOPBITS_1;
+    huart.Init.Parity = UART_PARITY_NONE;
+    huart.Init.Mode = UART_MODE_TX_RX;
+    huart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    HAL_UART_Init(&huart);
+}
