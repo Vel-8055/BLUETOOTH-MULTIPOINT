@@ -1,0 +1,51 @@
+#include "stm32f4xx_hal.h"
+
+I2S_HandleTypeDef hi2s;
+UART_HandleTypeDef huart;
+
+#define AUDIO_BUFFER_SIZE 512
+uint8_t sbc_audio_buffer[AUDIO_BUFFER_SIZE]; // SBC-encoded audio
+
+void SystemClock_Config(void);
+void MX_GPIO_Init(void);
+void MX_USART2_UART_Init(void);
+void MX_I2S3_Init(void);
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART2_UART_Init();
+    MX_I2S3_Init();
+    
+    while (1) {
+        // Receive SBC-encoded audio from UART (pre-encoded from PC)
+        HAL_UART_Receive(&huart, sbc_audio_buffer, AUDIO_BUFFER_SIZE, HAL_MAX_DELAY);
+        
+        // Transmit SBC audio data over I2S to ESP32
+        HAL_I2S_Transmit(&hi2s, (uint16_t*)sbc_audio_buffer, AUDIO_BUFFER_SIZE / 2, HAL_MAX_DELAY);
+    }
+}
+
+void MX_I2S3_Init(void) {
+    hi2s.Instance = SPI3;  // I2S3 on STM32F446RE
+    hi2s.Init.Mode = I2S_MODE_MASTER_TX;
+    hi2s.Init.Standard = I2S_STANDARD_PHILIPS;
+    hi2s.Init.DataFormat = I2S_DATAFORMAT_16B;
+    hi2s.Init.MCLKOutput = I2S_MCLKOUTPUT_ENABLE;
+    hi2s.Init.AudioFreq = I2S_AUDIOFREQ_44K;
+    hi2s.Init.CPOL = I2S_CPOL_LOW;
+    hi2s.Init.ClockSource = I2S_CLOCK_PLL;
+    HAL_I2S_Init(&hi2s);
+}
+
+void MX_USART2_UART_Init(void) {
+    huart.Instance = USART2;
+    huart.Init.BaudRate = 115200;
+    huart.Init.WordLength = UART_WORDLENGTH_8B;
+    huart.Init.StopBits = UART_STOPBITS_1;
+    huart.Init.Parity = UART_PARITY_NONE;
+    huart.Init.Mode = UART_MODE_TX_RX;
+    huart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    HAL_UART_Init(&huart);
+}
